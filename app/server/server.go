@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io/ioutil"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,15 @@ func (s *Server) Start() {
 	})
 
 	r.Use(s.Notes())
+	r.GET("/test", func(c *gin.Context) {
+		files, err := ioutil.ReadDir("./")
+		if err != nil {
+			c.JSON(200, err)
+			return
+		}
+
+		c.JSON(200, files)
+	})
 	r.Run(":" + s.Port)
 }
 
