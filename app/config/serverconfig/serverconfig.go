@@ -19,7 +19,9 @@ type Config struct {
 
 func LoadConfig() (*Config, error) {
 	conf := Config{}
-	viper.SetEnvPrefix(config.EnvPrefix)
+	if config.EnvPrefix != "" {
+		viper.SetEnvPrefix(config.EnvPrefix)
+	}
 	viper.SetTypeByDefaultValue(true)
 	RegisterEnvs(conf)
 

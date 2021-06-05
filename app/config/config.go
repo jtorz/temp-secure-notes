@@ -36,7 +36,7 @@ const (
 
 const (
 	// EnvPrefix enviroment variables prefix.
-	EnvPrefix string = "TSNOTES"
+	EnvPrefix string = ""
 )
 
 type LogginLvl uint8
