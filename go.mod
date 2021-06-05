@@ -4,7 +4,10 @@ module github.com/jtorz/temp-secure-notes
 go 1.16
 
 require (
+	github.com/gin-contrib/static v0.0.1
+	github.com/gin-gonic/gin v1.7.2
 	github.com/gomodule/redigo v1.8.4
-	github.com/labstack/echo/v4 v4.3.0
 	github.com/spf13/viper v1.7.1
+	golang.org/x/sys v0.0.0-20210403161142-5e06dd20ab57 // indirect
+	golang.org/x/text v0.3.6 // indirect
 )

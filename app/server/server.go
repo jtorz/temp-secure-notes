@@ -2,14 +2,15 @@ package server
 
 import (
 	"fmt"
-	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/gin-contrib/static"
+	"github.com/gin-gonic/gin"
 	"github.com/gomodule/redigo/redis"
 	"github.com/jtorz/temp-secure-notes/app/config"
 	"github.com/jtorz/temp-secure-notes/app/config/serverconfig"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/jtorz/temp-secure-notes/app/ctxinfo"
 )
 
 type Server struct {
@@ -38,21 +39,36 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) Start() {
-	// Echo instance
-	e := echo.New()
 
-	// Middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	gin.SetMode(s.AppMode)
 
-	// Routes
-	e.GET("/", hello)
+	r := gin.New()
+	r.Use(gin.Recovery())
 
-	// Start server
-	e.Logger.Fatal(e.Start(":" + s.Port))
+	// gin.logger middleware added only on debug mode.
+	if config.LogDebug >= s.LoggingLevel {
+		r.Use(gin.Logger())
+	}
+
+	//static files
+	r.Use(static.Serve("/", static.LocalFile("./web/dist", true)))
+
+	// Middleware used to add the app mode to the context.'
+	r.Use(func(ginCtx *gin.Context) {
+		ctxinfo.SetLoggingLevel(ginCtx, config.LogginLvl(s.LoggingLevel))
+	})
+
+	r.Use(s.Notes())
+	r.Run(":" + s.Port)
 }
 
-// Handler
-func hello(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello, World!")
+func (s *Server) Notes() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !strings.HasPrefix(c.Request.URL.Path, "/notes") {
+			c.Next()
+			return
+		}
+		c.JSON(200, c.Request.URL.Path)
+		c.Abort()
+	}
 }
