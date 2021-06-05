@@ -66,8 +66,18 @@ func (s *Server) Start() {
 			c.JSON(200, err)
 			return
 		}
+		isDir := func(b bool) string {
+			if b {
+				return "D"
+			}
+			return "F"
+		}
+		names := make([]string, len(files))
+		for i := range files {
 
-		c.JSON(200, files)
+			names[i] = isDir(files[i].IsDir()) + ":" + files[i].Name()
+		}
+		c.JSON(200, names)
 	})
 	r.Run(":" + s.Port)
 }
