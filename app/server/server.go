@@ -11,6 +11,7 @@ import (
 	"github.com/jtorz/temp-secure-notes/app/config"
 	"github.com/jtorz/temp-secure-notes/app/config/serverconfig"
 	"github.com/jtorz/temp-secure-notes/app/ctxinfo"
+	"github.com/jtorz/temp-secure-notes/app/websocket"
 )
 
 type Server struct {
@@ -39,9 +40,7 @@ func NewServer() (*Server, error) {
 }
 
 func (s *Server) Start() {
-
 	gin.SetMode(s.AppMode)
-
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -59,13 +58,21 @@ func (s *Server) Start() {
 	})
 
 	r.Use(s.Notes())
+	r.GET("/notes-content", s.NotesContent())
 
 	r.Run(":" + s.Port)
 }
 
+func (s *Server) NotesContent() gin.HandlerFunc {
+	hubs := websocket.NewHubsMap()
+	return func(c *gin.Context) {
+		websocket.ServeWs(hubs, c.Writer, c.Request)
+	}
+}
+
 func (s *Server) Notes() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !strings.HasPrefix(c.Request.URL.Path, "/notes") {
+		if !strings.HasPrefix(c.Request.URL.Path, "/notes/") {
 			c.Next()
 			return
 		}

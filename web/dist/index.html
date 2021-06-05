@@ -6,6 +6,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hola</title>
 </head>
+<script>
+    var ws = new WebSocket("ws://" + location.host + "/notes-content?asd2");
+     // open connection when the trigger
+    ws.onopen = function(evt) {
+        console.log("Connection open ...");
+        ws.send("Hello WebSockets!");
+    };
+     // triggered when a message is received
+    ws.onmessage = function(evt) {
+        console.log("Received Message: " + evt.data);
+    };
+     // close the connection when the trigger
+    ws.onclose = function(evt) {
+        console.log("Connection closed.");
+    };
+
+    </script>
 <body>
 Hello
 </body>
