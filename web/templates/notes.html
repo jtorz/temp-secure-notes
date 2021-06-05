@@ -6,55 +6,59 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notes</title>
+    <script src="/static/jquery-3.6.0.min.js"></script>
 
     <script>
-        const byteSize = str => new Blob([str]).size;
-        var ws;
-        function newWebSocket() {
-            return new WebSocket("ws://" + location.host + "/notes-content?{{.NoteURLEnc}}")
-        }
-        checkWebSocket();
-        function checkWebSocket() {
-            if (ws && (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING)){
-                    return
-            }
-            ws = newWebSocket();
-            ws.onopen = function (evt) {
-                console.log("Connection open ...");
-            };
-            // triggered when a message is received
-            ws.onmessage = function (evt) {
-                document.getElementById('textnote').value = evt.data;
-            };
-            // close the connection when the trigger
-            ws.onclose = function (evt) {
-                console.log("Connection closed.");
-            };
-        }
-        // open connection when the trigger
+        var lastVersion;
 
+        function getNote() {
+            $.get('/notes-content?note={{.NoteURLEnc}}')
+                .then(
+                    function (data) {
+                        document.getElementById('textnote').value = data;
+                    }
+                )
+                .fail(HandleFail);
+        }
+
+
+        function doSendData(callback) {
+            $.post('/notes-content?note={{.NoteURLEnc}}', document.getElementById('textnote').value)
+                .then(data => lastVersion = new Date(data))
+                .fail(HandleFail);
+        }
         var pendingClick;
-        function sendData() {
+        function sendDataDelayed() {
             clearTimeout(pendingClick);
-            pendingClick = setTimeout(function () {
-                checkWebSocket();
-                if (ws.readyState === ws.CONNECTING){
-                    sendData();
-                    return;
-                }
-                if(byteSize(document.getElementById('textnote').value) > 131072){
-                    alert('max size is 131072')
-                    location.reload();
-                }
-                ws.send(document.getElementById('textnote').value)
-            }, 500);
+            pendingClick = setTimeout(doSendData, 500);
+        }
+
+
+        checkTimestamp();
+        var intervalId = window.setInterval(checkTimestamp, 3000);
+        function checkTimestamp() {
+            $.get('/notes-content/timestamp?note={{.NoteURLEnc}}')
+                .then(function (timestamp) {
+                    let date = new Date(timestamp);
+                    if (lastVersion === undefined || (timestamp != '' && date > lastVersion)) {
+                        lastVersion = date
+                        getNote();
+                    }
+                })
+                .fail(HandleFail);
+        }
+
+        function HandleFail(err) {
+            $('#error').show().text("Error: "+err.responseJSON);
+            setTimeout(5000, $('#error').hide);
         }
     </script>
-    <link rel="stylesheet" href="/css/notes.css">
+    <link rel="stylesheet" href="/static/notes.css">
 </head>
 
 <body>
-    <textarea class="note" name="textnote" id="textnote" onkeyup="sendData()"></textarea>
+    <div id="error" style="display: none;"></div>
+    <textarea class="note" name="textnote" id="textnote" onkeyup="sendDataDelayed()"></textarea>
 </body>
 
 </html>
