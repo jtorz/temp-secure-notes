@@ -51,7 +51,7 @@ func (s *Server) Start() {
 	}
 
 	//static files
-	r.Use(static.Serve("/", static.LocalFile("./web/dist", true)))
+	r.Use(static.Serve("/", static.LocalFile("web/dist", true)))
 
 	// Middleware used to add the app mode to the context.'
 	r.Use(func(ginCtx *gin.Context) {
