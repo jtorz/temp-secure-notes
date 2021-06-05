@@ -14,6 +14,8 @@ type Config struct {
 	Port         int              `mapstructure:"PORT"`
 	AppMode      string           `mapstructure:"MODE"`
 	RedisURL     string           `mapstructure:"REDIS_URL"`
+	RedisMaxOpen int              `mapstructure:"REDIS_MAX_OPEN"`
+	RedisMaxIdle int              `mapstructure:"REDIS_MAX_IDLE"`
 	LoggingLevel config.LogginLvl `mapstructure:"LOGGING_LEVEL"`
 }
 
@@ -26,6 +28,8 @@ func LoadConfig() (*Config, error) {
 	RegisterEnvs(conf)
 
 	viper.SetDefault("LOGGING_LEVEL", "debug")
+	viper.SetDefault("REDIS_MAX_OPEN", "5")
+	viper.SetDefault("REDIS_MAX_IDLE", "5")
 
 	err := viper.Unmarshal(&conf)
 	if err != nil {

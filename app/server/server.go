@@ -2,6 +2,8 @@ package server
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -32,7 +34,7 @@ func NewServer() (*Server, error) {
 		LoggingLevel: config.LoggingLevel,
 	}
 
-	server.Redis, err = serverconfig.OpenRedis(config.RedisURL, 2, 2)
+	server.Redis, err = serverconfig.OpenRedis(config.RedisURL, config.RedisMaxOpen, config.RedisMaxIdle)
 	if err != nil {
 		return nil, fmt.Errorf("reddis open connection error: %w", err)
 	}
@@ -57,26 +59,43 @@ func (s *Server) Start() {
 		ctxinfo.SetLoggingLevel(ginCtx, config.LogginLvl(s.LoggingLevel))
 	})
 
+	r.NoRoute(func(c *gin.Context) {
+		defer c.Next()
+		if strings.HasPrefix(c.Request.URL.Path, "/notes/") {
+			c.Status(200)
+			return
+		}
+	})
+
+	r.LoadHTMLGlob("web/templates/*")
 	r.Use(s.Notes())
 	r.GET("/notes-content", s.NotesContent())
-
 	r.Run(":" + s.Port)
 }
 
 func (s *Server) NotesContent() gin.HandlerFunc {
 	hubs := websocket.NewHubsMap()
 	return func(c *gin.Context) {
-		websocket.ServeWs(hubs, c.Writer, c.Request)
+		websocket.ServeWs(hubs, s.Redis, c.Writer, c.Request)
 	}
 }
 
 func (s *Server) Notes() gin.HandlerFunc {
+	type TplData struct {
+		NoteURL    string
+		NoteURLEnc string
+	}
 	return func(c *gin.Context) {
 		if !strings.HasPrefix(c.Request.URL.Path, "/notes/") {
 			c.Next()
 			return
 		}
-		c.JSON(200, c.Request.URL.Path)
+		key := c.Request.URL.String()
+		c.HTML(http.StatusOK, "notes.html", TplData{
+			NoteURL:    key,
+			NoteURLEnc: url.QueryEscape(key),
+		})
+		c.Status(200)
 		c.Abort()
 	}
 }

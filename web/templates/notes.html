@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes</title>
+
+    <script>
+        const byteSize = str => new Blob([str]).size;
+        var ws;
+        function newWebSocket() {
+            return new WebSocket("ws://" + location.host + "/notes-content?{{.NoteURLEnc}}")
+        }
+        checkWebSocket();
+        function checkWebSocket() {
+            if (ws && (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING)){
+                    return
+            }
+            ws = newWebSocket();
+            ws.onopen = function (evt) {
+                console.log("Connection open ...");
+            };
+            // triggered when a message is received
+            ws.onmessage = function (evt) {
+                document.getElementById('textnote').value = evt.data;
+            };
+            // close the connection when the trigger
+            ws.onclose = function (evt) {
+                console.log("Connection closed.");
+            };
+        }
+        // open connection when the trigger
+
+        var pendingClick;
+        function sendData() {
+            clearTimeout(pendingClick);
+            pendingClick = setTimeout(function () {
+                checkWebSocket();
+                if (ws.readyState === ws.CONNECTING){
+                    sendData();
+                    return;
+                }
+                if(byteSize(document.getElementById('textnote').value) > 131072){
+                    alert('max size is 131072')
+                    location.reload();
+                }
+                ws.send(document.getElementById('textnote').value)
+            }, 500);
+        }
+    </script>
+    <link rel="stylesheet" href="/css/notes.css">
+</head>
+
+<body>
+    <textarea class="note" name="textnote" id="textnote" onkeyup="sendData()"></textarea>
+</body>
+
+</html>

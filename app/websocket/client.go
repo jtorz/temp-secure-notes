@@ -5,12 +5,12 @@
 package websocket
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/websocket"
 )
 
@@ -25,13 +25,10 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 
 	// Maximum message size allowed from peer.
-	maxMessageSize = 512
+	maxMessageSize = 1 << 17 //131072 = 131 kB
 )
 
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
+var ()
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -54,7 +51,7 @@ type Client struct {
 // The application runs readPump in a per-connection goroutine. The application
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
-func (c *Client) readPump() {
+func (c *Client) readPump(redisPool *redis.Pool) {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
@@ -70,8 +67,29 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+
+		//message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+		c.writeRedis(redisPool, message)
 		c.hub.broadcast <- message
+	}
+}
+func (c *Client) readRedis(redisPool *redis.Pool) []byte {
+	con := redisPool.Get()
+	defer con.Close()
+	reply, err := redis.Bytes(con.Do("GET", c.hub.key))
+	if err != nil {
+		if err != redis.ErrNil {
+			fmt.Println(err)
+		}
+		return nil
+	}
+	return reply
+}
+func (c *Client) writeRedis(redisPool *redis.Pool, msg []byte) {
+	con := redisPool.Get()
+	defer con.Close()
+	if _, err := con.Do("SET", c.hub.key, msg); err != nil {
+		fmt.Println("Errors writing to redis", err)
 	}
 }
 
@@ -80,12 +98,17 @@ func (c *Client) readPump() {
 // A goroutine running writePump is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-func (c *Client) writePump() {
+func (c *Client) writePump(redisPool *redis.Pool) {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
 		c.conn.Close()
 	}()
+
+	if data := c.readRedis(redisPool); data != nil {
+		c.conn.WriteMessage(websocket.TextMessage, data)
+	}
+
 	for {
 		select {
 		case message, ok := <-c.send:
@@ -105,7 +128,6 @@ func (c *Client) writePump() {
 			// Add queued chat messages to the current websocket message.
 			n := len(c.send)
 			for i := 0; i < n; i++ {
-				w.Write(newline)
 				w.Write(<-c.send)
 			}
 
@@ -122,9 +144,8 @@ func (c *Client) writePump() {
 }
 
 // ServeWs handles websocket requests from the peer.
-func ServeWs(hubs *HubsMap, w http.ResponseWriter, r *http.Request) {
+func ServeWs(hubs *HubsMap, redis *redis.Pool, w http.ResponseWriter, r *http.Request) {
 	hub := hubs.GetSet(r.URL.String())
-	fmt.Println(hub)
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -136,6 +157,6 @@ func ServeWs(hubs *HubsMap, w http.ResponseWriter, r *http.Request) {
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
-	go client.writePump()
-	go client.readPump()
+	go client.writePump(redis)
+	go client.readPump(redis)
 }
