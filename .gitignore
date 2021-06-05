@@ -13,8 +13,6 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# web dist files
-web/
 
 # VSCode debug files
 debug/
