@@ -1,0 +1,33 @@
+# Mac OS X files
+.DS_Store
+
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# web dist files
+web/
+
+# VSCode debug files
+debug/
+__debug_bin
+
+# Playground folders
+playground/
+
+# Configuration files
+app/assets/certs/*
+
+
+web/dist/
+web/backup/
+
+*.env
