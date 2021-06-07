@@ -35,7 +35,7 @@
 
 
         checkTimestamp();
-        var intervalId = window.setInterval(checkTimestamp, 3000);
+        var intervalId = window.setInterval(checkTimestamp, 5000);
         function checkTimestamp() {
             $.get('/notes-content/timestamp?note={{.NoteURLEnc}}')
                 .then(function (timestamp) {
@@ -49,8 +49,8 @@
         }
 
         function HandleFail(err) {
-            $('#error').show().text("Error: "+err.responseJSON);
-            setTimeout(5000, $('#error').hide);
+            $('#error').show(400).text("Error: " + err.responseJSON);
+            setTimeout(()=>{$('#error').hide(400)}, 3000);
         }
     </script>
     <link rel="stylesheet" href="/static/notes.css">

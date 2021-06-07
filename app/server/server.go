@@ -8,22 +8,22 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
-	"github.com/gomodule/redigo/redis"
 	"github.com/jtorz/temp-secure-notes/app/config"
 	"github.com/jtorz/temp-secure-notes/app/config/serverconfig"
 	"github.com/jtorz/temp-secure-notes/app/ctxinfo"
+	"github.com/jtorz/temp-secure-notes/app/dataaccess"
 )
 
 type Server struct {
 	Port         string
 	AppMode      string
+	MaxNoteSize  uint32
 	LoggingLevel config.LogginLvl
-	Redis        *redis.Pool
+	DataAccces   dataaccess.DataAccces
 }
 
 func NewServer() (*Server, error) {
@@ -35,12 +35,14 @@ func NewServer() (*Server, error) {
 		Port:         strconv.Itoa(config.Port),
 		AppMode:      config.AppMode,
 		LoggingLevel: config.LoggingLevel,
+		MaxNoteSize:  1 << 17,
 	}
 
-	server.Redis, err = serverconfig.OpenRedis(config.RedisURL, config.RedisMaxOpen, config.RedisMaxIdle)
+	redisPool, err := serverconfig.OpenRedis(config.RedisURL, config.RedisMaxOpen, config.RedisMaxIdle)
 	if err != nil {
 		return nil, fmt.Errorf("reddis open connection error: %w", err)
 	}
+	server.DataAccces = dataaccess.NewRedis(redisPool, config.DataTTL)
 	return &server, nil
 }
 
@@ -72,141 +74,87 @@ func (s *Server) Start() {
 
 	r.LoadHTMLGlob("web/templates/*")
 	r.Use(s.Notes())
-	r.POST("/notes-content", s.SetNotesContent())
+	r.POST("/notes-content", s.SetNoteContent())
 	r.GET("/notes-content", s.GetNote())
-	r.GET("/notes-content/timestamp", s.GetTimestamp())
+	r.GET("/notes-content/timestamp", s.GetNoteVersion())
 
 	r.Run(":" + s.Port)
 }
 
-const max = 1 << 17
+const missingNoteID = "unkown note"
+const oopsError = "Oops!"
 
-func (s *Server) SetNotesContent() gin.HandlerFunc {
-	maxHuman := humanize.Bytes(max)
+func (s *Server) SetNoteContent() gin.HandlerFunc {
+	maxHuman := humanize.Bytes(uint64(s.MaxNoteSize))
 	return func(c *gin.Context) {
-		body, err := ioutil.ReadAll(c.Request.Body)
+		noteID := c.Query("note")
+		if noteID == "" {
+			c.JSON(http.StatusBadRequest, missingNoteID)
+			return
+		}
+
+		note, err := ioutil.ReadAll(c.Request.Body)
 		if err != nil {
 			log.Println(err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if len(body) > (max) {
+		if len(note) > (int(s.MaxNoteSize)) {
 			c.JSON(http.StatusBadRequest, "content too big Max:"+maxHuman)
 			return
 		}
-		note := c.Query("note")
-		if note == "" {
-			c.JSON(http.StatusBadRequest, "missing note")
-			return
-		}
-		con := s.Redis.Get()
-		defer con.Close()
 
-		now := time.Now().Format(time.RFC3339Nano)
-		if _, err := con.Do("SET", note, body); err != nil {
-			fmt.Println("Errors writing to redis", err)
-			c.JSON(http.StatusBadRequest, "saving note")
-			return
+		version, err := s.DataAccces.SetNote(c, noteID, note)
+		if err != nil {
+			log.Println(err)
+			c.JSON(http.StatusInternalServerError, oopsError)
 		}
-		if _, err := con.Do("SET", "time:"+note, now); err != nil {
-			fmt.Println("Errors writing to redis", err)
-			c.JSON(http.StatusBadRequest, "saving note")
-			return
-		}
-		c.JSON(200, now)
+		c.JSON(200, version)
 	}
 }
 
 func (s *Server) GetNote() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		note := c.Query("note")
-		if note == "" {
-			c.JSON(http.StatusBadRequest, "missing note")
+		noteID := c.Query("note")
+		if noteID == "" {
+			c.JSON(http.StatusBadRequest, missingNoteID)
 			return
 		}
 
-		if ts, err := s.getNoteRedis(note); err != nil {
-			c.JSON(http.StatusInternalServerError, "note not found")
+		note, found, err := s.DataAccces.GetNote(c, noteID)
+		if err != nil {
+			log.Println(err)
+			c.JSON(http.StatusInternalServerError, oopsError)
 			return
-		} else {
-			if _, err := c.Writer.Write(ts); err != nil {
-				c.Status(http.StatusInternalServerError)
-				return
-			}
+		} else if !found {
 			c.Status(http.StatusOK)
 			return
 		}
-	}
-}
 
-func (s *Server) getNoteRedis(note string) ([]byte, error) {
-	con := s.Redis.Get()
-	defer con.Close()
-	ts, err := redis.Bytes(con.Do("GET", note))
-	if err != nil {
-		if err == redis.ErrNil {
-			return nil, nil
-		}
-		fmt.Println("Errors reading from redis", err)
-		return nil, err
-	}
-	return ts, nil
-}
-
-func (s *Server) GetTimestamp() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		note := c.Query("note")
-		if note == "" {
-			c.JSON(http.StatusBadRequest, "missing note")
+		if _, err := c.Writer.Write(note); err != nil {
+			log.Println(err)
+			c.JSON(http.StatusInternalServerError, oopsError)
 			return
 		}
-		if ts, err := s.getTimestampRedis(note); err != nil {
-			c.Status(http.StatusInternalServerError)
-		} else {
-			c.JSON(200, ts)
-		}
+		c.Status(http.StatusOK)
 	}
 }
 
-func (s *Server) getTimestampRedis(note string) (string, error) {
-	con := s.Redis.Get()
-	defer con.Close()
-	ts, err := redis.String(con.Do("GET", "time:"+note))
-	if err != nil {
-		if err == redis.ErrNil {
-			return "", nil
-		}
-		fmt.Println("Errors reading from redis", err)
-		return "", err
-	}
-	return ts, nil
-}
-
-/* func (c *Client) readRedis(redisPool *redis.Pool) []byte {
-	con := redisPool.Get()
-	defer con.Close()
-	reply, err := redis.Bytes(con.Do("GET", c.hub.key))
-	if err != nil {
-		if err != redis.ErrNil {
-			fmt.Println(err)
-		}
-		return nil
-	}
-	return reply
-}
-func (c *Client) writeRedis(redisPool *redis.Pool, msg []byte) {
-	con := redisPool.Get()
-	defer con.Close()
-} */
-
-// Web socket vesion
-// r.GET("/notes-content", s.NotesContent())
-/* func (s *Server) NotesContent() gin.HandlerFunc {
-	hubs := websocket.NewHubsMap()
+func (s *Server) GetNoteVersion() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		websocket.ServeWs(hubs, s.Redis, c.Writer, c.Request)
+		noteID := c.Query("note")
+		if noteID == "" {
+			c.JSON(http.StatusBadRequest, missingNoteID)
+			return
+		}
+		if version, err := s.DataAccces.GetVersion(c, noteID); err != nil {
+			log.Println(err)
+			c.JSON(http.StatusInternalServerError, oopsError)
+		} else {
+			c.JSON(200, version)
+		}
 	}
-} */
+}
 
 func (s *Server) Notes() gin.HandlerFunc {
 	type TplData struct {
@@ -218,7 +166,7 @@ func (s *Server) Notes() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		key := c.Request.URL.String()
+		key := strings.TrimPrefix(c.Request.URL.Path, "/notes/")
 		c.HTML(http.StatusOK, "notes.html", TplData{
 			NoteURL:    key,
 			NoteURLEnc: url.QueryEscape(key),
