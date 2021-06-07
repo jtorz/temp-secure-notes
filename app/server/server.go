@@ -82,7 +82,7 @@ func (s *Server) Start() {
 const max = 1 << 17
 
 func (s *Server) SetNotesContent() gin.HandlerFunc {
-	maxHuman := humanize.Bytes(1 << 17)
+	maxHuman := humanize.Bytes(max)
 	return func(c *gin.Context) {
 		body, err := ioutil.ReadAll(c.Request.Body)
 		if err != nil {
@@ -90,7 +90,7 @@ func (s *Server) SetNotesContent() gin.HandlerFunc {
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		if len(body) > (1 << 17) {
+		if len(body) > (max) {
 			c.JSON(http.StatusBadRequest, "content too big Max:"+maxHuman)
 			return
 		}
