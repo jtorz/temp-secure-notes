@@ -2,7 +2,6 @@ package dataaccess
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -65,14 +64,6 @@ func (r Redis) GetVersion(ctx context.Context, key string) (version string, err 
 func (r Redis) SetNote(ctx context.Context, key string, data []byte) (version string, err error) {
 	con := r.pool.Get()
 	defer con.Close()
-	fmt.Println(len(data))
-	if len(data) == 0 {
-		con.Do("DEL", key)
-		if ctxinfo.LogginAllowed(ctx, config.LogDebug) {
-			log.Println("deleting key:", key)
-		}
-		return
-	}
 
 	if ctxinfo.LogginAllowed(ctx, config.LogDebug) {
 		log.Printf("writing %s", humanize.Bytes(uint64(len(data))))

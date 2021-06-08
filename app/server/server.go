@@ -1,11 +1,12 @@
 package server
 
 import (
+	"compress/gzip"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -59,9 +60,11 @@ func (s *Server) Start() {
 	//static files
 	r.Use(static.Serve("/", static.LocalFile("web/dist", true)))
 
-	// Middleware used to add the app mode to the context.'
-	r.Use(func(ginCtx *gin.Context) {
-		ctxinfo.SetLoggingLevel(ginCtx, config.LogginLvl(s.LoggingLevel))
+	r.Use(func(c *gin.Context) {
+		ctxinfo.SetLoggingLevel(c, s.LoggingLevel)
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=3600")
 	})
 
 	r.NoRoute(func(c *gin.Context) {
@@ -74,20 +77,20 @@ func (s *Server) Start() {
 
 	r.LoadHTMLGlob("web/templates/*")
 	r.Use(s.Notes())
-	r.POST("/notes-content", s.SetNoteContent())
-	r.GET("/notes-content", s.GetNote())
-	r.GET("/notes-content/timestamp", s.GetNoteVersion())
+	r.POST("/note", s.SetNoteContent())
+	r.GET("/note", s.GetNote())
+	r.GET("/note/v", s.GetNoteVersion())
 
 	r.Run(":" + s.Port)
 }
 
-const missingNoteID = "unkown note"
+const missingNoteID = "uknown note"
 const oopsError = "Oops!"
 
 func (s *Server) SetNoteContent() gin.HandlerFunc {
 	maxHuman := humanize.Bytes(uint64(s.MaxNoteSize))
 	return func(c *gin.Context) {
-		noteID := c.Query("note")
+		noteID := c.Query("n")
 		if noteID == "" {
 			c.JSON(http.StatusBadRequest, missingNoteID)
 			return
@@ -95,7 +98,7 @@ func (s *Server) SetNoteContent() gin.HandlerFunc {
 
 		note, err := ioutil.ReadAll(c.Request.Body)
 		if err != nil {
-			log.Println(err)
+			s.logErr(c, err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
@@ -106,7 +109,7 @@ func (s *Server) SetNoteContent() gin.HandlerFunc {
 
 		version, err := s.DataAccces.SetNote(c, noteID, note)
 		if err != nil {
-			log.Println(err)
+			s.logErr(c, err)
 			c.JSON(http.StatusInternalServerError, oopsError)
 		}
 		c.JSON(200, version)
@@ -115,7 +118,7 @@ func (s *Server) SetNoteContent() gin.HandlerFunc {
 
 func (s *Server) GetNote() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		noteID := c.Query("note")
+		noteID := c.Query("n")
 		if noteID == "" {
 			c.JSON(http.StatusBadRequest, missingNoteID)
 			return
@@ -123,7 +126,7 @@ func (s *Server) GetNote() gin.HandlerFunc {
 
 		note, found, err := s.DataAccces.GetNote(c, noteID)
 		if err != nil {
-			log.Println(err)
+			s.logErr(c, err)
 			c.JSON(http.StatusInternalServerError, oopsError)
 			return
 		} else if !found {
@@ -131,8 +134,12 @@ func (s *Server) GetNote() gin.HandlerFunc {
 			return
 		}
 
-		if _, err := c.Writer.Write(note); err != nil {
-			log.Println(err)
+		c.Header("Content-Type", "text/plain")
+		c.Header("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(c.Writer)
+		defer zw.Close()
+		if _, err := zw.Write(note); err != nil {
+			s.logErr(c, err)
 			c.JSON(http.StatusInternalServerError, oopsError)
 			return
 		}
@@ -142,13 +149,13 @@ func (s *Server) GetNote() gin.HandlerFunc {
 
 func (s *Server) GetNoteVersion() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		noteID := c.Query("note")
+		noteID := c.Query("n")
 		if noteID == "" {
 			c.JSON(http.StatusBadRequest, missingNoteID)
 			return
 		}
 		if version, err := s.DataAccces.GetVersion(c, noteID); err != nil {
-			log.Println(err)
+			s.logErr(c, err)
 			c.JSON(http.StatusInternalServerError, oopsError)
 		} else {
 			c.JSON(200, version)
@@ -157,21 +164,24 @@ func (s *Server) GetNoteVersion() gin.HandlerFunc {
 }
 
 func (s *Server) Notes() gin.HandlerFunc {
-	type TplData struct {
-		NoteURL    string
-		NoteURLEnc string
-	}
 	return func(c *gin.Context) {
 		if !strings.HasPrefix(c.Request.URL.Path, "/notes/") {
 			c.Next()
 			return
 		}
-		key := strings.TrimPrefix(c.Request.URL.Path, "/notes/")
-		c.HTML(http.StatusOK, "notes.html", TplData{
-			NoteURL:    key,
-			NoteURLEnc: url.QueryEscape(key),
-		})
+		if strings.HasSuffix(c.Request.URL.Path, "/") {
+			c.Redirect(http.StatusMovedPermanently, c.Request.URL.Path[:len(c.Request.URL.Path)-1])
+			c.Abort()
+			return
+		}
+		c.HTML(http.StatusOK, "notes.html", nil)
 		c.Status(200)
 		c.Abort()
+	}
+}
+
+func (s *Server) logErr(ctx context.Context, err error) {
+	if ctxinfo.LogginAllowed(ctx, config.LogError) {
+		log.Println(err)
 	}
 }
