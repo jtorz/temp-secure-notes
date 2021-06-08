@@ -3,6 +3,8 @@ package server
 import (
 	"compress/gzip"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -28,23 +30,36 @@ type Server struct {
 }
 
 func NewServer() (*Server, error) {
-	config, err := serverconfig.LoadConfig()
+	sConfig, err := serverconfig.LoadConfig()
 	if err != nil {
 		return nil, err
 	}
 	server := Server{
-		Port:         strconv.Itoa(config.Port),
-		AppMode:      config.AppMode,
-		LoggingLevel: config.LoggingLevel,
-		MaxNoteSize:  1 << 17,
+		Port:         strconv.Itoa(sConfig.Port),
+		AppMode:      sConfig.AppMode,
+		LoggingLevel: sConfig.LoggingLevel,
+		MaxNoteSize:  uint32(sConfig.MaxNoteSize),
 	}
+	server.DataAccces, err = loadDataAccess(*sConfig)
+	if err != nil {
+		return nil, err
+	}
+	return &server, nil
+}
 
-	redisPool, err := serverconfig.OpenRedis(config.RedisURL, config.RedisMaxOpen, config.RedisMaxIdle)
+func loadDataAccess(sConfig serverconfig.Config) (dataaccess.DataAccces, error) {
+	if sConfig.InMemory {
+		return dataaccess.NewInMemory(
+			sConfig.DataTTL,
+			int(sConfig.MaxNoteSize),
+			int(sConfig.MaxNoteSize)*300, sConfig.LoggingLevel == config.LogDebug,
+		)
+	}
+	redisPool, err := serverconfig.OpenRedis(sConfig.RedisURL, sConfig.RedisMaxOpen, sConfig.RedisMaxIdle)
 	if err != nil {
 		return nil, fmt.Errorf("reddis open connection error: %w", err)
 	}
-	server.DataAccces = dataaccess.NewRedis(redisPool, config.DataTTL)
-	return &server, nil
+	return dataaccess.NewRedis(redisPool, sConfig.DataTTL), nil
 }
 
 func (s *Server) Start() {
@@ -77,6 +92,7 @@ func (s *Server) Start() {
 
 	r.LoadHTMLGlob("web/templates/*")
 	r.Use(s.Notes())
+	r.GET("/goto", s.Goto())
 	r.POST("/note", s.SetNoteContent())
 	r.GET("/note", s.GetNote())
 	r.GET("/note/v", s.GetNoteVersion())
@@ -86,6 +102,31 @@ func (s *Server) Start() {
 
 const missingNoteID = "uknown note"
 const oopsError = "Oops!"
+
+func (s *Server) Goto() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		noteID := c.Query("note")
+		if noteID == "" {
+			url, err := getRand()
+			if err != nil {
+				s.logErr(c, err)
+				c.Status(http.StatusBadRequest)
+				return
+			}
+			c.Redirect(http.StatusTemporaryRedirect, "/notes/"+url)
+		}
+
+		c.Redirect(http.StatusTemporaryRedirect, "/notes/"+noteID)
+	}
+}
+
+func getRand() (s string, err error) {
+	bytes := make([]byte, 16)
+	if _, err = rand.Read(bytes); err != nil {
+		return
+	}
+	return strings.ReplaceAll(base64.StdEncoding.EncodeToString(bytes), "/", "-"), nil
+}
 
 func (s *Server) SetNoteContent() gin.HandlerFunc {
 	maxHuman := humanize.Bytes(uint64(s.MaxNoteSize))

@@ -11,9 +11,9 @@ import (
 	"github.com/jtorz/temp-secure-notes/app/ctxinfo"
 )
 
-// DataAccces Data Access Interface
+// DataAccces Data Access Interface.
 type DataAccces interface {
-	GetNote(ctx context.Context, key string) (data []byte, found bool, _ error)
+	GetNote(ctx context.Context, key string) (data []byte, found bool, err error)
 	GetVersion(ctx context.Context, key string) (version string, err error)
 	SetNote(ctx context.Context, key string, data []byte) (version string, err error)
 }

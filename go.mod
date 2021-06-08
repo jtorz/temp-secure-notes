@@ -4,6 +4,7 @@ module github.com/jtorz/temp-secure-notes
 go 1.16
 
 require (
+	github.com/allegro/bigcache/v2 v2.2.5
 	github.com/dustin/go-humanize v1.0.0
 	github.com/gin-contrib/static v0.0.1
 	github.com/gin-gonic/gin v1.7.2

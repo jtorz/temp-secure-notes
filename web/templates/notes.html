@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Notes</title>
-    <script src="/static/jquery-3.6.0.min.js"></script>
-    <script src="/static/notes.js"></script>
-    <link rel="stylesheet" href="/static/notes.css">
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Notes</title>
+	<script src="/static/jquery-3.6.0.min.js"></script>
+	<script src="/static/notes.js"></script>
+	<link rel="stylesheet" href="/static/notes.css">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu Mono">
 </head>
+
 <body>
-    <div id="error" style="display: none;"></div>
-    <textarea class="note" name="textnote" id="textnote" onkeyup="sendDataDelayed()"></textarea>
+	<div id="error" style="display: none;"></div>
+	<textarea class="note" name="textnote" id="textnote" onkeyup="sendDataDelayed()" autofocus="true"></textarea>
 </body>
+
 </html>

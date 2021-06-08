@@ -1,6 +1,7 @@
 package serverconfig
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ type Config struct {
 	Port         int              `mapstructure:"PORT"`
 	AppMode      string           `mapstructure:"MODE"`
 	DataTTL      int              `mapstructure:"DATA_TTL"`
+	InMemory     bool             `mapstructure:"IN_MEMORY"`
+	MaxNoteSize  uint             `mapstructure:"MAX_NOTE_SIZE"`
 	RedisURL     string           `mapstructure:"REDIS_URL"`
 	RedisMaxOpen int              `mapstructure:"REDIS_MAX_OPEN"`
 	RedisMaxIdle int              `mapstructure:"REDIS_MAX_IDLE"`
@@ -30,6 +33,8 @@ func LoadConfig() (*Config, error) {
 
 	viper.SetDefault("MODE", "debug")
 	viper.SetDefault("DATA_TTL", "3600")
+	viper.SetDefault("IN_MEMORY", "false")
+	viper.SetDefault("MAX_NOTE_SIZE", fmt.Sprint(1<<17)) //131 kB
 	viper.SetDefault("REDIS_MAX_OPEN", "5")
 	viper.SetDefault("REDIS_MAX_IDLE", "5")
 	viper.SetDefault("LOGGING_LEVEL", "0")

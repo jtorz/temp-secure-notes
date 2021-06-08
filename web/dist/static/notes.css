@@ -12,5 +12,8 @@ textarea.note {
    height: 100%;
    margin: auto;
    resize: none;
-   background: #fffbdb;
+   background: #FFF;
+   border: none;
+   font-family: 'Ubuntu Mono', monospace;
+   font-size: 15px;
 }
